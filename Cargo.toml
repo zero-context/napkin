@@ -1,6 +1,6 @@
 [package]
 name = "napkin"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Measured latency numbers for hardware that actually exists."
 license = "MIT"

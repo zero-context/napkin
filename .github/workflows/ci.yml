@@ -20,13 +20,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo build --release --locked
-      - run: cargo clippy --release -- -D warnings
+      - run: cargo test --locked
+      - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo fmt --check
-      # A GitHub runner is a shared VM, so the guard will usually refuse to
-      # produce a result here. That is correct behaviour, and the point of this
-      # step is that the binary runs end to end and exits deliberately either
-      # way — never that CI produces a committable number.
-      - name: Smoke test
+      # A GitHub runner is a shared VM that exposes no cpufreq governor, so the
+      # guard must refuse here. Asserted rather than merely printed: v0.1.0
+      # shipped with this combination as a warning, which meant CI could write
+      # a committable result file. If this step ever starts passing, the
+      # refusal has regressed.
+      - name: The guard must refuse on a shared runner
         run: |
-          ./target/release/napkin --stdout > /tmp/ci.json || true
-          python3 -c "import json;d=json.load(open('/tmp/ci.json'));print('valid:',d['run']['valid']);print('\n'.join(d['run']['invalidations'] or ['(guard passed)']))"
+          set +e
+          ./target/release/napkin --stdout > /tmp/ci.json 2> /tmp/ci.err
+          status=$?
+          cat /tmp/ci.err
+          if [ "$status" -eq 0 ]; then
+            echo "FAIL: napkin produced a result on a virtualized CI runner"
+            exit 1
+          fi
+          grep -q "no cpufreq governor exposed" /tmp/ci.err || {
+            echo "FAIL: refused, but not for the expected reason"; exit 1; }
+          echo "OK: refused with status $status"

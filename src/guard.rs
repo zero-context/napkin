@@ -22,6 +22,72 @@ const MAX_CALIBRATION_DRIFT_PCT: f64 = 5.0;
 /// somebody else's cache footprint as much as ours.
 const MAX_LOAD_FRACTION: f64 = 0.30;
 
+/// One outcome of a pre-run check: a reason to refuse outright, or a caveat to
+/// record alongside a result that still stands.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Finding {
+    Invalid(String),
+    Warn(String),
+}
+
+/// Decide what the machine's clock situation means for trusting a result.
+///
+/// Pure, and unit-tested, because the combinations that matter are ones the
+/// author's own machine cannot produce: a bare-metal box with no cpufreq driver
+/// at all, and a virtualized runner that exposes no governor. The second of
+/// those shipped in v0.1.0 as a mere warning, which meant a shared CI runner
+/// could write a committable result file.
+pub fn clock_findings(governor: Option<&str>, virtualized: Option<bool>) -> Vec<Finding> {
+    let mut out = Vec::new();
+
+    // Note the asymmetry: failing to confirm the clock is pinned is not the
+    // same as confirming it is not. The second is a refusal on its own; the
+    // first only becomes one in company.
+    let pinning_unverified = match governor {
+        Some("performance") => false,
+        Some(other) => {
+            out.push(Finding::Invalid(format!(
+                "cpu governor is '{}', not 'performance'; clock ramping makes these numbers \
+                 unreproducible. set it with: sudo cpupower frequency-set -g performance",
+                other
+            )));
+            false
+        }
+        None => true,
+    };
+
+    match (virtualized, pinning_unverified) {
+        // The case that slipped through v0.1.0. On a shared runner the host
+        // owns the clock, the guest cannot pin it, and no governor is exposed
+        // to say otherwise. Nothing about the timing environment is verifiable,
+        // and the cpu named in the file is not really the cpu that was
+        // measured, so refuse rather than publish a number attributed to it.
+        (Some(true), true) => out.push(Finding::Invalid(
+            "running under a hypervisor with no cpufreq governor exposed: there is no way to \
+             confirm the clock was pinned, and the host's other tenants are in these numbers. \
+             a result from here cannot honestly be attributed to the cpu it names"
+                .into(),
+        )),
+        // A guest that can at least pin its own clock is still worth having.
+        // Cloud instances are the hardware most software actually runs on, and
+        // the calibration drift check will catch a host that steals time.
+        (Some(true), false) => out.push(Finding::Warn(
+            "running under a hypervisor; timings include virtualization overhead and the host's \
+             other tenants"
+                .into(),
+        )),
+        // No cpufreq driver on bare metal is normal on machines that do no
+        // frequency scaling at all, and those are exactly the unusual machines
+        // the dataset most wants. Record the caveat and carry on.
+        (_, true) => out.push(Finding::Warn(
+            "no cpufreq governor exposed; could not confirm the clock was pinned".into(),
+        )),
+        (_, false) => {}
+    }
+
+    out
+}
+
 pub struct Guard {
     iters: u64,
     start_ns: f64,
@@ -40,25 +106,13 @@ impl Guard {
             warnings: Vec::new(),
         };
 
-        match m.governor.as_deref() {
-            Some("performance") => {}
-            Some(other) => g.invalidations.push(format!(
-                "cpu governor is '{}', not 'performance'; clock ramping makes these numbers \
-                 unreproducible. set it with: sudo cpupower frequency-set -g performance",
-                other
-            )),
-            None => g
-                .warnings
-                .push("no cpufreq governor exposed; could not confirm the clock was pinned".into()),
+        for finding in clock_findings(m.governor.as_deref(), m.virtualized) {
+            match finding {
+                Finding::Invalid(msg) => g.invalidations.push(msg),
+                Finding::Warn(msg) => g.warnings.push(msg),
+            }
         }
 
-        if m.virtualized == Some(true) {
-            g.warnings.push(
-                "running under a hypervisor; timings include virtualization overhead and the \
-                 host's other tenants"
-                    .into(),
-            );
-        }
         if m.os != "linux" {
             g.warnings.push(format!(
                 "os is '{}'; machine facts and some probes are Linux-only and were skipped",
@@ -163,4 +217,75 @@ fn size_calibration() -> u64 {
 fn loadavg_1min() -> Option<f64> {
     let s = std::fs::read_to_string("/proc/loadavg").ok()?;
     s.split_whitespace().next()?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clock_findings, Finding};
+
+    fn invalids(g: Option<&str>, v: Option<bool>) -> usize {
+        clock_findings(g, v)
+            .iter()
+            .filter(|f| matches!(f, Finding::Invalid(_)))
+            .count()
+    }
+
+    fn warns(g: Option<&str>, v: Option<bool>) -> usize {
+        clock_findings(g, v)
+            .iter()
+            .filter(|f| matches!(f, Finding::Warn(_)))
+            .count()
+    }
+
+    #[test]
+    fn pinned_bare_metal_is_the_clean_case() {
+        assert_eq!(clock_findings(Some("performance"), Some(false)), vec![]);
+    }
+
+    #[test]
+    fn a_ramping_governor_is_refused_anywhere() {
+        for virtualized in [Some(true), Some(false), None] {
+            assert_eq!(
+                invalids(Some("powersave"), virtualized),
+                1,
+                "powersave should be refused with virtualized={:?}",
+                virtualized
+            );
+            assert_eq!(invalids(Some("schedutil"), virtualized), 1);
+        }
+    }
+
+    #[test]
+    fn bare_metal_without_cpufreq_is_allowed_with_a_caveat() {
+        // Machines that do no frequency scaling at all are exactly the unusual
+        // hardware the dataset wants; refusing them would be worse than the bug
+        // this rule was written to fix.
+        assert_eq!(invalids(None, Some(false)), 0);
+        assert_eq!(warns(None, Some(false)), 1);
+    }
+
+    #[test]
+    fn a_guest_that_pins_its_own_clock_is_allowed_with_a_caveat() {
+        assert_eq!(invalids(Some("performance"), Some(true)), 0);
+        assert_eq!(warns(Some("performance"), Some(true)), 1);
+    }
+
+    #[test]
+    fn a_guest_with_no_governor_is_refused() {
+        // The v0.1.0 regression: this combination is what a shared CI runner
+        // looks like, and it produced a committable result file.
+        assert_eq!(
+            invalids(None, Some(true)),
+            1,
+            "a hypervisor guest exposing no governor must not produce a result"
+        );
+    }
+
+    #[test]
+    fn unknown_virtualization_does_not_escalate_to_a_refusal() {
+        // Non-Linux platforms report neither field. They should still be able
+        // to contribute a flagged result rather than being locked out.
+        assert_eq!(invalids(None, None), 0);
+        assert_eq!(warns(None, None), 1);
+    }
 }

@@ -60,8 +60,13 @@ rather than guesses. It will refuse to write a file if:
   That last one is a calibration workload timed twice, and on a laptop it
   almost always means thermal throttling.
 
-Running under a hypervisor is a warning, not a refusal: virtualized numbers are
-real numbers, they just include the host.
+Running under a hypervisor is normally a warning, not a refusal — cloud
+instances are the hardware most software actually runs on, and those numbers are
+real, they just include the host. But a guest that exposes **no** cpufreq
+governor is refused: there is then no way to confirm the clock was pinned, and a
+result whose timing environment is entirely unverifiable cannot honestly be
+attributed to the CPU it names. That combination is what a shared CI runner
+looks like.
 
 Within a run, each probe reports a median and an interquartile spread, and any
 probe that spreads past 20% is flagged `"stable": false` in the output rather
