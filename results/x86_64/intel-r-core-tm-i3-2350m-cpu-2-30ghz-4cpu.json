@@ -1,0 +1,260 @@
+{
+  "schema": 1,
+  "napkin_version": "0.1.0",
+  "run": {
+    "timestamp_utc": "2026-08-29T11:05:46Z",
+    "seed": 1788001518746540551,
+    "pinned_cpu": 3,
+    "valid": true,
+    "invalidations": [],
+    "warnings": [],
+    "guard": {
+      "calibration_start_ns": 397427590.000,
+      "calibration_end_ns": 396331181.000,
+      "calibration_drift_pct": -0.276,
+      "max_drift_pct": 5.000
+    }
+  },
+  "machine": {
+    "arch": "x86_64",
+    "os": "linux",
+    "kernel": "6.8.0-138-generic",
+    "cpu_model": "Intel(R) Core(TM) i3-2350M CPU @ 2.30GHz",
+    "logical_cpus": 4,
+    "physical_cores": 2,
+    "ram_bytes": 8162328576,
+    "governor": "performance",
+    "virtualized": false,
+    "caches": [
+      {
+        "level": 1,
+        "type": "Data",
+        "bytes": 32768
+      },
+      {
+        "level": 1,
+        "type": "Instruction",
+        "bytes": 32768
+      },
+      {
+        "level": 2,
+        "type": "Unified",
+        "bytes": 262144
+      },
+      {
+        "level": 3,
+        "type": "Unified",
+        "bytes": 3145728
+      }
+    ]
+  },
+  "probes": {
+    "memory_latency_curve": {
+      "unit": "ns",
+      "what": "nanoseconds for one dependent load, chasing a random 64-byte-strided pointer cycle of the given working-set size. cache-level plateaus and the DRAM step are read off this curve.",
+      "measured": true,
+      "stable": false,
+      "unstable_x": [
+        2097152
+      ],
+      "curve": [
+        {
+          "x_label": "working_set_bytes",
+          "x": 4096,
+          "median": 2.243,
+          "min": 2.179,
+          "spread_pct": 4.002,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 16384,
+          "median": 2.196,
+          "min": 2.179,
+          "spread_pct": 1.892,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 32768,
+          "median": 2.180,
+          "min": 2.179,
+          "spread_pct": 1.197,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 65536,
+          "median": 5.359,
+          "min": 5.240,
+          "spread_pct": 4.257,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 131072,
+          "median": 5.307,
+          "min": 5.247,
+          "spread_pct": 4.088,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 262144,
+          "median": 7.238,
+          "min": 6.697,
+          "spread_pct": 14.114,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 524288,
+          "median": 13.732,
+          "min": 13.616,
+          "spread_pct": 5.995,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 1048576,
+          "median": 14.807,
+          "min": 14.378,
+          "spread_pct": 5.091,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 2097152,
+          "median": 36.418,
+          "min": 21.131,
+          "spread_pct": 60.989,
+          "stable": false,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 4194304,
+          "median": 82.753,
+          "min": 75.913,
+          "spread_pct": 7.356,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 8388608,
+          "median": 88.855,
+          "min": 87.916,
+          "spread_pct": 1.228,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 16777216,
+          "median": 90.985,
+          "min": 90.142,
+          "spread_pct": 0.953,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 33554432,
+          "median": 95.558,
+          "min": 92.517,
+          "spread_pct": 2.859,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 67108864,
+          "median": 96.187,
+          "min": 95.207,
+          "spread_pct": 1.348,
+          "stable": true,
+          "samples": 13
+        },
+        {
+          "x_label": "working_set_bytes",
+          "x": 134217728,
+          "median": 104.014,
+          "min": 101.989,
+          "spread_pct": 1.266,
+          "stable": true,
+          "samples": 13
+        }
+      ]
+    },
+    "syscall_getppid": {
+      "unit": "ns",
+      "what": "nanoseconds for one getppid(2) round trip into the kernel and back. this is a floor on syscall cost, and it moved sharply with the 2018 speculative-execution mitigations.",
+      "measured": true,
+      "stable": true,
+      "median": 633.217,
+      "min": 624.831,
+      "p10": 626.686,
+      "p90": 645.529,
+      "spread_pct": 1.755,
+      "samples": 11
+    },
+    "mutex_lock_unlock_uncontended": {
+      "unit": "ns",
+      "what": "nanoseconds for one lock/unlock pair on an uncontended std::sync::Mutex, including the guarded increment. no other thread ever touches the lock, so this should stay in userspace.",
+      "measured": true,
+      "stable": true,
+      "median": 25.423,
+      "min": 25.367,
+      "p10": 25.384,
+      "p90": 26.031,
+      "spread_pct": 1.815,
+      "samples": 11
+    },
+    "thread_pingpong_rtt": {
+      "unit": "ns",
+      "what": "nanoseconds for one send-and-receive round trip between two threads over a zero-capacity rendezvous channel. includes two hand-offs plus channel overhead, not a bare context switch.",
+      "measured": true,
+      "stable": true,
+      "median": 11792.804,
+      "min": 10817.922,
+      "p10": 11242.494,
+      "p90": 12665.500,
+      "spread_pct": 8.689,
+      "samples": 9
+    },
+    "branch_mispredict_penalty": {
+      "unit": "ns",
+      "what": "nanoseconds per element by which a shuffled walk is slower than a sorted walk over the same 64KiB array, with the same branch taken the same number of times. this is the cost of an unpredictable branch, averaged over all elements.",
+      "measured": true,
+      "stable": true,
+      "median": 5.035,
+      "min": 4.948,
+      "p10": 4.958,
+      "p90": 5.082,
+      "spread_pct": 2.158,
+      "samples": 15,
+      "note": "sorted walk 1.96 ns/element (spread 0.1%), shuffled walk 7.00 ns/element (spread 2.2%). roughly half the elements are branch-taken, so the per-misprediction cost is near twice this delta."
+    },
+    "page_fault_first_touch": {
+      "unit": "ns",
+      "what": "nanoseconds for one minor page fault: the first write to a page of a fresh anonymous MAP_PRIVATE mapping, including the kernel zeroing the page.",
+      "measured": true,
+      "stable": true,
+      "median": 2555.162,
+      "min": 2372.982,
+      "p10": 2377.877,
+      "p90": 2832.727,
+      "spread_pct": 5.720,
+      "samples": 9
+    }
+  }
+}

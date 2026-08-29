@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Contributions are almost always a single JSON file, so this job is the one
+  # that matters and it runs in seconds without a toolchain.
+  results:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/validate.py
+      - name: Render the table
+        run: python3 tools/table.py
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --release --locked
+      - run: cargo clippy --release -- -D warnings
+      - run: cargo fmt --check
+      # A GitHub runner is a shared VM, so the guard will usually refuse to
+      # produce a result here. That is correct behaviour, and the point of this
+      # step is that the binary runs end to end and exits deliberately either
+      # way — never that CI produces a committable number.
+      - name: Smoke test
+        run: |
+          ./target/release/napkin --stdout > /tmp/ci.json || true
+          python3 -c "import json;d=json.load(open('/tmp/ci.json'));print('valid:',d['run']['valid']);print('\n'.join(d['run']['invalidations'] or ['(guard passed)']))"
