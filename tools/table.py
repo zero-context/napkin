@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Render the canonical latency table from results/.
 
-Writes Markdown to stdout. This is the artifact the project exists to produce:
+Writes Markdown to stdout, or splices it into a file between
+`<!-- BEGIN:dataset -->` and `<!-- END:dataset -->` with `--inject <file>`. This is the artifact the project exists to produce:
 the numbers everyone quotes, for hardware that is actually in service, with the
 machine each one came from named next to it.
 
@@ -78,42 +79,102 @@ def fmt(v, unit="ns"):
     return f"{v:.2f} ns"
 
 
+BEGIN = "<!-- BEGIN:dataset -->"
+END = "<!-- END:dataset -->"
+
+
+def render(results, embed=False):
+    """Build the markdown. `embed` drops the document title, since the file it
+    is spliced into already has one."""
+    out = []
+    if not embed:
+        out.append("# Latency numbers, measured\n")
+    out.append(
+        f"{len(results)} machine(s) in the dataset. Every row is a real measurement from a "
+        "real machine that passed the run guard, not an estimate.\n"
+    )
+
+    cols = ["L1", "L2", "L3", "DRAM"]
+    out.append("### Memory hierarchy\n")
+    out.append("| Machine | Arch | " + " | ".join(cols) + " |")
+    out.append("|---|---|" + "---|" * len(cols))
+    for d in results:
+        lat = cache_latencies(d)
+        cells = [fmt(lat.get(c)) for c in cols]
+        out.append(
+            f"| {d['machine']['cpu_model']} | {d['machine']['arch']} | " + " | ".join(cells) + " |"
+        )
+
+    out.append("\n### Everything else\n")
+    out.append("| Machine | Syscall | Mutex | Page fault | Branch miss | Thread RTT |")
+    out.append("|---|---|---|---|---|---|")
+    for d in results:
+        out.append(
+            "| "
+            + " | ".join(
+                [
+                    d["machine"]["cpu_model"],
+                    fmt(probe(d, "syscall_getppid")),
+                    fmt(probe(d, "mutex_lock_unlock_uncontended")),
+                    fmt(probe(d, "page_fault_first_touch")),
+                    fmt(probe(d, "branch_mispredict_penalty")),
+                    fmt(probe(d, "thread_pingpong_rtt")),
+                ]
+            )
+            + " |"
+        )
+
+    out.append(
+        "\n*Branch miss is the per-element cost of an unpredictable branch; roughly half the "
+        "elements are mispredictable, so the per-misprediction penalty is near twice it. "
+        "Thread RTT is a round trip over a rendezvous channel, not a bare context switch. "
+        "Cache levels are read at half of each level's capacity, clear of the bimodal region "
+        "at the boundary.*"
+    )
+    return "\n".join(out) + "\n"
+
+
+def inject(path, body):
+    """Splice the table between the markers in `path`. Returns True if the file
+    changed, so a caller can skip an empty commit."""
+    text = Path(path).read_text()
+    if BEGIN not in text or END not in text:
+        raise SystemExit(f"{path}: missing {BEGIN} / {END} markers")
+    head, rest = text.split(BEGIN, 1)
+    _, tail = rest.split(END, 1)
+    updated = f"{head}{BEGIN}\n{body}{END}{tail}"
+    if updated == text:
+        return False
+    Path(path).write_text(updated)
+    return True
+
+
 def main(argv):
-    results = load(argv[1] if len(argv) > 1 else "results")
+    args = argv[1:]
+    target = None
+    if "--inject" in args:
+        i = args.index("--inject")
+        try:
+            target = args[i + 1]
+        except IndexError:
+            raise SystemExit("--inject needs a file path")
+        args = args[:i] + args[i + 2 :]
+
+    results = load(args[0] if args else "results")
     if not results:
         print("no valid results found", file=sys.stderr)
         return 1
 
-    print("# Latency numbers, measured\n")
-    print(f"{len(results)} machine(s). Every row is a real measurement from a real machine "
-          "that passed the run guard, not an estimate.\n")
+    if target:
+        changed = inject(target, render(results, embed=True))
+        print(
+            f"{target}: {'updated' if changed else 'already current'} "
+            f"({len(results)} machine(s))",
+            file=sys.stderr,
+        )
+        return 0
 
-    cols = ["L1", "L2", "L3", "DRAM"]
-    print("## Memory hierarchy\n")
-    print("| Machine | Arch | " + " | ".join(cols) + " |")
-    print("|---|---|" + "---|" * len(cols))
-    for d in results:
-        lat = cache_latencies(d)
-        cells = [fmt(lat.get(c)) for c in cols]
-        print(f"| {d['machine']['cpu_model']} | {d['machine']['arch']} | " + " | ".join(cells) + " |")
-
-    print("\n## Everything else\n")
-    print("| Machine | Syscall | Mutex | Page fault | Branch miss | Thread RTT |")
-    print("|---|---|---|---|---|---|")
-    for d in results:
-        row = [
-            d["machine"]["cpu_model"],
-            fmt(probe(d, "syscall_getppid")),
-            fmt(probe(d, "mutex_lock_unlock_uncontended")),
-            fmt(probe(d, "page_fault_first_touch")),
-            fmt(probe(d, "branch_mispredict_penalty")),
-            fmt(probe(d, "thread_pingpong_rtt")),
-        ]
-        print("| " + " | ".join(row) + " |")
-
-    print("\n*Branch miss is the per-element cost of an unpredictable branch; roughly half the "
-          "elements are mispredictable, so the per-misprediction penalty is near twice it. "
-          "Thread RTT is a round trip over a rendezvous channel, not a bare context switch.*")
+    print(render(results), end="")
     return 0
 
 

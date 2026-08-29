@@ -1,0 +1,43 @@
+name: readme
+
+# Regenerates the dataset table in README.md after a result is merged.
+#
+# CI does this rather than the contributor, deliberately. napkin's pitch is one
+# binary, one JSON file, one pull request; asking someone to also regenerate a
+# table and commit it would make that untrue and is exactly the friction the
+# project exists to avoid.
+on:
+  push:
+    branches: [main]
+    paths: ['results/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two results merged close together would otherwise race to push.
+concurrency:
+  group: readme-table
+  cancel-in-progress: false
+
+jobs:
+  table:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/table.py --inject README.md
+      - name: Commit if the table changed
+        run: |
+          # No loop guard needed beyond this: the trigger filters on results/**
+          # and this job only ever writes README.md, so its own push cannot
+          # retrigger it. The no-op exit keeps empty commits out of history.
+          if git diff --quiet README.md; then
+            echo "table already current; nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Update the README dataset table"
+          git push
+          echo "table updated"
