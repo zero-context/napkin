@@ -41,3 +41,38 @@ jobs:
           grep -q "no cpufreq governor exposed" /tmp/ci.err || {
             echo "FAIL: refused, but not for the expected reason"; exit 1; }
           echo "OK: refused with status $status"
+
+  # A Mac is the most likely second architecture in this dataset and the least
+  # likely machine for a contributor to have spare, so both the build and the
+  # fact collection are checked on a real one.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --release --locked
+      - run: cargo test --locked
+      - name: Machine facts must resolve on macOS
+        run: |
+          set +e
+          ./target/release/napkin --stdout > /tmp/mac.json 2> /tmp/mac.err
+          cat /tmp/mac.err
+          # The runner is virtualized, so the guard may refuse — that is correct
+          # and covered elsewhere. What must hold is that the cpu is
+          # identifiable: validate.py rejects any result whose cpu_model is
+          # "unknown", so an unresolved model locks macOS out of the dataset
+          # entirely, which is the bug this platform support exists to fix.
+          if head -1 /tmp/mac.err | grep -q "unknown"; then
+            echo "FAIL: cpu_model did not resolve on macOS"
+            exit 1
+          fi
+          echo "OK: $(head -1 /tmp/mac.err)"
+
+  # Catches breakage in the macOS-only code paths from a Linux runner, cheaply
+  # and without a Mac. `check` does not link, so no Apple SDK is needed.
+  cross-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: cargo check --locked --target aarch64-apple-darwin --all-targets
+      - run: cargo check --locked --target x86_64-apple-darwin --all-targets

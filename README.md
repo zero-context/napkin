@@ -32,7 +32,8 @@ wrote results/x86_64/intel-r-core-tm-i3-2350m-cpu-2-30ghz-4cpu.json
 git clone <this repo> && cd napkin
 cargo build --release
 
-# probes are unreproducible on a ramping clock, so pin it first
+# linux: probes are unreproducible on a ramping clock, so pin it first.
+# macos has no equivalent and needs no step here — napkin notes it in the file.
 sudo cpupower frequency-set -g performance
 
 ./target/release/napkin
@@ -104,8 +105,15 @@ Stated plainly, because the gaps are the roadmap:
   measure the page cache. Not implemented rather than implemented badly.
 - **Network RTT.** Needs a fixed public endpoint, which is an operational
   commitment and a privacy question, not just code.
-- **Non-Linux machines.** The binary runs, but machine facts, CPU pinning and
-  the page-fault probe are Linux-only and will say so in the output.
+- **CPU pinning on macOS.** Linux and macOS are both supported; every probe
+  runs and every machine fact resolves. But macOS exposes only affinity
+  *hints*, which the scheduler may ignore, so probes there run unpinned and the
+  result says so. Expect a slightly wider spread than the same silicon
+  under Linux.
+- **Windows and the BSDs.** The binary should build, but machine facts come
+  back `unknown` and `tools/validate.py` will reject the result, because the
+  dataset is indexed by CPU. Adding a platform means adding one `facts` module
+  in `src/machine.rs`.
 - **Core pinning for the thread probe.** It runs unpinned, so scheduler
   placement is part of what it measures. Pinning the two threads to two known
   physical cores would make it comparable across machines.

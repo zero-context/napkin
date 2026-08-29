@@ -41,14 +41,19 @@ Good first changes, roughly in order of how self-contained they are:
 - **Write the `what` string for a probe more clearly.** Every probe carries a
   one-sentence description into the result file. If one is vague, that is a
   real bug — people read those instead of the source.
-- **Port a probe to another platform.** `page_fault_first_touch` and the CPU
-  pinning in `machine.rs` are Linux-only and currently skip elsewhere with a
-  note. macOS and the BSDs need `mach_vm_allocate` and
-  `thread_policy_set` equivalents.
-- **Machine facts on non-x86.** `cpu_model` falls back through several
+- **Add a platform.** `src/machine.rs` has one `facts` module per operating
+  system, each exposing the same functions. Linux reads `/proc` and `/sys`;
+  macOS reads `sysctl`. A BSD module would be a third, and nothing outside that
+  file needs to change. Without one, `cpu_model` returns `unknown` and
+  `tools/validate.py` rejects the result, so this is what unlocks a platform.
+- **Machine facts on non-x86.** On Linux `cpu_model` falls back through several
   `/proc/cpuinfo` keys and then the device tree. If it returns `unknown` on
   your board, that is a one-line fix and the dataset cannot index your machine
   without it.
+- **Thread pinning on macOS.** Probes currently run unpinned there, because
+  macOS offers only affinity hints. If you know a way to bind a thread to a
+  core that the scheduler actually honours, that would narrow the spread on
+  every Mac in the dataset.
 - **Add a probe.** See below.
 
 ### Adding a probe

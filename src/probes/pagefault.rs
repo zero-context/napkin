@@ -10,13 +10,21 @@ use super::{bench, time_ns, Probe};
 const PAGES: usize = 8192;
 const REPS: usize = 9;
 
+/// MAP_NORESERVE keeps Linux from charging the mapping against commit limits.
+/// It is not portable, and it is only an optimization, so elsewhere it is
+/// simply absent rather than emulated.
+#[cfg(target_os = "linux")]
+const EXTRA_MAP_FLAGS: libc::c_int = libc::MAP_NORESERVE;
+#[cfg(not(target_os = "linux"))]
+const EXTRA_MAP_FLAGS: libc::c_int = 0;
+
 pub fn run() -> Probe {
-    if cfg!(not(target_os = "linux")) {
+    if cfg!(not(any(target_os = "linux", target_os = "macos"))) {
         return Probe::skipped(
             "page_fault_first_touch",
             "ns",
             WHAT,
-            "mmap-based probe is currently linux-only".into(),
+            "mmap-based probe is not implemented for this platform".into(),
         );
     }
 
@@ -40,7 +48,7 @@ pub fn run() -> Probe {
                 std::ptr::null_mut(),
                 len,
                 libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS | libc::MAP_NORESERVE,
+                libc::MAP_PRIVATE | libc::MAP_ANON | EXTRA_MAP_FLAGS,
                 -1,
                 0,
             )

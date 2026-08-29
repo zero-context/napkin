@@ -214,9 +214,24 @@ fn size_calibration() -> u64 {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn loadavg_1min() -> Option<f64> {
     let s = std::fs::read_to_string("/proc/loadavg").ok()?;
     s.split_whitespace().next()?.parse().ok()
+}
+
+/// macOS has no /proc, but getloadavg(3) is there. Without this the idleness
+/// check would silently degrade to a warning on every Mac, which is the guard
+/// quietly switching itself off on a whole platform.
+#[cfg(not(target_os = "linux"))]
+fn loadavg_1min() -> Option<f64> {
+    let mut avg = [0f64; 3];
+    let n = unsafe { libc::getloadavg(avg.as_mut_ptr(), 3) };
+    if n >= 1 {
+        Some(avg[0])
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
