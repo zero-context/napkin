@@ -4,13 +4,20 @@
 
 This is the common case and it should take about five minutes.
 
-1. `cargo build --release`
-2. `sudo cpupower frequency-set -g performance` (or your distro's equivalent —
-   napkin refuses to run otherwise, and explains why)
+1. Download the binary for your machine from
+   [the latest release](https://github.com/zero-context/napkin/releases/latest)
+   and `chmod +x` it. The Linux builds are static, so they run on old
+   distributions too — which is most of the interesting hardware. No Rust
+   toolchain needed. (`cargo build --release` still works, and is the route on
+   RISC-V and the BSDs.)
+2. **Linux:** `sudo cpupower frequency-set -g performance` (or your distro's
+   equivalent — napkin refuses to run otherwise, and explains why).
+   **macOS:** nothing to do; the clock cannot be pinned there and the result
+   records that.
 3. Close what you can. A browser is enough to fail the load check.
-4. `./target/release/napkin`
-5. `python3 tools/validate.py`
-6. Commit **only** the one JSON file under `results/` and open a pull request.
+4. Run it. It writes `results/<arch>/<your-cpu>.json` relative to where you are.
+5. `python3 tools/validate.py` from a clone of this repo.
+6. Commit **only** that one JSON file and open a pull request.
 
 If the run refuses, the message says which condition failed and what to do
 about it. A refusal is the tool working.

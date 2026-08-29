@@ -11,6 +11,7 @@ All times are **nanoseconds**. All sizes are **bytes**.
 |---|---|
 | `schema` | Format version. Currently `1`. |
 | `napkin_version` | Version of the binary that produced the file. |
+| `libc` | C library the binary was linked against: `musl` (the published Linux binaries), `gnu` (a source build on Linux), `libsystem` (macOS). Recorded because musl and glibc are not guaranteed to measure identically at the syscall and mmap boundary, so any systematic difference stays attributable. Absent in files written before napkin 0.1.2; treat a missing value as unknown rather than as a default. (Measured on an idle Sandy Bridge machine, musl and glibc agreed within 1% on every probe.) |
 | `run` | Conditions the measurement was taken under. |
 | `machine` | What the hardware is. |
 | `probes` | The measurements. |

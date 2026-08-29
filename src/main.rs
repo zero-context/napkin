@@ -17,6 +17,24 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const SCHEMA: u64 = 1;
 
+/// Which C library this binary was linked against.
+///
+/// Recorded because the project ships static musl builds alongside
+/// build-from-source runs that link the system glibc, and the two are not
+/// guaranteed to measure identically at the syscall and mmap boundary. If a
+/// systematic difference ever appears in the dataset it has to be attributable
+/// rather than invisible — the same reason the guard records its conditions
+/// instead of silently passing.
+const LIBC: &str = if cfg!(target_env = "musl") {
+    "musl"
+} else if cfg!(target_env = "gnu") {
+    "gnu"
+} else if cfg!(target_os = "macos") {
+    "libsystem"
+} else {
+    "unknown"
+};
+
 struct Args {
     out: Option<String>,
     stdout: bool,
@@ -224,6 +242,7 @@ fn build(
     J::Obj(vec![
         ("schema", J::u(SCHEMA)),
         ("napkin_version", J::s(VERSION)),
+        ("libc", J::s(LIBC)),
         (
             "run",
             J::Obj(vec![

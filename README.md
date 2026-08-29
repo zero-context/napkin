@@ -29,14 +29,26 @@ wrote results/x86_64/intel-r-core-tm-i3-2350m-cpu-2-30ghz-4cpu.json
 ## Contributing a machine
 
 ```sh
-git clone <this repo> && cd napkin
-cargo build --release
+# a static binary, no toolchain required. swap for napkin-aarch64-linux
+# (Pi 5, Ampere, Graviton) or napkin-macos-universal (any Mac).
+curl -fsSL https://github.com/zero-context/napkin/releases/latest/download/napkin-x86_64-linux -o napkin
+chmod +x napkin
 
 # linux: probes are unreproducible on a ramping clock, so pin it first.
 # macos has no equivalent and needs no step here — napkin notes it in the file.
 sudo cpupower frequency-set -g performance
 
-./target/release/napkin
+./napkin
+```
+
+It writes `results/<arch>/<your-cpu>.json`. Open a pull request against this
+repo containing that one file.
+
+Building from source works too, and is the route on RISC-V and the BSDs:
+
+```sh
+git clone https://github.com/zero-context/napkin && cd napkin
+cargo build --release && ./target/release/napkin
 python3 tools/validate.py
 ```
 
