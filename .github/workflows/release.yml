@@ -1,0 +1,141 @@
+name: release
+
+# Tag push publishes a release. Manual dispatch builds the same binaries and
+# leaves them as workflow artifacts, so the build can be exercised without
+# spending a version number on it.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Every result file records the version of the binary that produced it, so a
+  # tag that disagrees with Cargo.toml would mislabel the dataset permanently.
+  # Cheap to check, impossible to fix after the fact.
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match Cargo.toml
+        run: |
+          crate=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          echo "Cargo.toml version: $crate"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            echo "tag version: $tag"
+            if [ "$crate" != "$tag" ]; then
+              echo "FAIL: tag v$tag does not match Cargo.toml $crate"
+              exit 1
+            fi
+          fi
+          echo "version=$crate" >> "$GITHUB_OUTPUT"
+        id: v
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runner per architecture: no cross-compilation, so no cross
+          # linker to misconfigure. musl for Linux, which makes the binary
+          # static and immune to the target's glibc version.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            asset: napkin-x86_64-linux
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            asset: napkin-aarch64-linux
+          - os: macos-latest
+            target: universal
+            asset: napkin-macos-universal
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install musl toolchain
+        if: matrix.target != 'universal'
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          rustup target add ${{ matrix.target }}
+
+      - name: Build (linux, static)
+        if: matrix.target != 'universal'
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/napkin ${{ matrix.asset }}
+          strip ${{ matrix.asset }} || true
+
+      # One binary that runs on both Apple silicon and Intel Macs, so the
+      # download instructions do not have to ask which machine someone has.
+      - name: Build (macos, universal)
+        if: matrix.target == 'universal'
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          lipo -create -output ${{ matrix.asset }} \
+            target/aarch64-apple-darwin/release/napkin \
+            target/x86_64-apple-darwin/release/napkin
+          strip ${{ matrix.asset }} || true
+          lipo -info ${{ matrix.asset }}
+
+      # A binary that cannot start is worse than no binary: the contributor
+      # concludes the project is broken and leaves. --version exercises startup
+      # and dynamic loading without needing an idle machine.
+      - name: It must actually run
+        run: |
+          chmod +x ${{ matrix.asset }}
+          ./${{ matrix.asset }} --version
+          ./${{ matrix.asset }} --help > /dev/null
+          echo "ok: $(./${{ matrix.asset }} --version)"
+
+      # The point of musl is that the binary runs on a distro older than the
+      # one that built it. Checked with `file` rather than `ldd`: rust's musl
+      # targets emit static-pie, which ldd reports inconsistently across
+      # distros, and a false pass here would ship a binary that dies on the
+      # exact old machines the dataset most wants.
+      - name: Confirm the linux builds are static
+        if: matrix.target != 'universal'
+        run: |
+          file ${{ matrix.asset }}
+          if ! file ${{ matrix.asset }} | grep -qE "statically linked|static-pie linked"; then
+            echo "FAIL: binary is not statically linked; it will not run on older distros"
+            exit 1
+          fi
+          echo "ok: static"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    needs: [version, build]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist && sha256sum napkin-* > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/checkout@v4
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ needs.version.outputs.version }}"
+          sed "s|__REPO__|${{ github.repository }}|g" .github/RELEASE_NOTES.md > notes.md
+          gh release create "v$v" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "napkin v$v" \
+            --notes-file notes.md
