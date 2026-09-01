@@ -23,24 +23,54 @@ jobs:
       - run: cargo test --locked
       - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo fmt --check
-      # A GitHub runner is a shared VM that exposes no cpufreq governor, so the
-      # guard must refuse here. Asserted rather than merely printed: v0.1.0
-      # shipped with this combination as a warning, which meant CI could write
-      # a committable result file. If this step ever starts passing, the
-      # refusal has regressed.
-      - name: The guard must refuse on a shared runner
+      # A CI runner is a shared VM, so this step holds the guard to the one
+      # rule the dataset rests on: never publish a number attributed to a cpu
+      # whose clock cannot be accounted for. Which outcome is correct depends
+      # on the runner image, and GitHub hands out both -- an EPYC 7763 exposes
+      # no governor and must be refused, a Xeon 8573C exposes 'performance'
+      # and may be published as long as it is marked virtualized. Asserting
+      # only the first made this step a coin flip on runner assignment. Each
+      # branch is asserted rather than merely printed, because v0.1.0 shipped
+      # the refusal case as a warning, which meant CI could write a
+      # committable result file.
+      - name: The guard must account for the clock on a shared runner
         run: |
           set +e
           ./target/release/napkin --stdout > /tmp/ci.json 2> /tmp/ci.err
           status=$?
           cat /tmp/ci.err
-          if [ "$status" -eq 0 ]; then
-            echo "FAIL: napkin produced a result on a virtualized CI runner"
-            exit 1
+          gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
+          echo "runner governor: '${gov:-<none exposed>}', napkin exited $status"
+          if [ -z "$gov" ]; then
+            # The host owns the clock and nothing is exposed to say otherwise,
+            # so there is no honest cpu to attribute the numbers to.
+            if [ "$status" -eq 0 ]; then
+              echo "FAIL: published a result from a VM exposing no governor"; exit 1
+            fi
+            grep -q "no cpufreq governor exposed" /tmp/ci.err || {
+              echo "FAIL: refused, but not for the expected reason"; exit 1; }
+            echo "OK: refused with status $status"
+          elif [ "$gov" = "performance" ]; then
+            # The guest can pin its own clock, so the result is worth having --
+            # but it must carry the virtualization caveat, or it reads as a
+            # measurement of bare metal that never happened.
+            if [ "$status" -ne 0 ]; then
+              echo "FAIL: refused despite a pinned clock"; exit 1
+            fi
+            grep -q "running under a hypervisor" /tmp/ci.err || {
+              echo "FAIL: published without recording that this is a VM"; exit 1; }
+            grep -q '"virtualized": true' /tmp/ci.json || {
+              echo "FAIL: result does not record virtualized=true"; exit 1; }
+            echo "OK: published with status $status, marked virtualized"
+          else
+            # A ramping clock is a refusal anywhere, VM or not.
+            if [ "$status" -eq 0 ]; then
+              echo "FAIL: published a result under governor '$gov'"; exit 1
+            fi
+            grep -q "not 'performance'" /tmp/ci.err || {
+              echo "FAIL: refused, but not for the expected reason"; exit 1; }
+            echo "OK: refused with status $status"
           fi
-          grep -q "no cpufreq governor exposed" /tmp/ci.err || {
-            echo "FAIL: refused, but not for the expected reason"; exit 1; }
-          echo "OK: refused with status $status"
 
   # A Mac is the most likely second architecture in this dataset and the least
   # likely machine for a contributor to have spare, so both the build and the
